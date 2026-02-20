@@ -27,27 +27,56 @@ public class Main {
         return def;
     }
 
+    //method for user input of mode
+    private static String askMode(Scanner sc) {
+        System.out.print("Mode (sequential/parallel) [sequential]: ");
+        String s = sc.nextLine().trim().toLowerCase();
+        if (s.isEmpty()) return "sequential";
+        if (s.equals("s") || s.equals("seq") || s.equals("sequential")) return "sequential";
+        if (s.equals("p") || s.equals("par") || s.equals("parallel")) return "parallel";
+        System.out.println("Invalid mode, using default: sequential");
+        return "sequential";
+    }
+
     public static void main(String[] args) {
-        System.out.println("Particles Simulation (Sequential)");
+        System.out.println("Particles Simulation");
+        System.out.println("Available CPUs: " + Runtime.getRuntime().availableProcessors());
+        System.out.println();
+
         Scanner sc = new Scanner(System.in);
 
+        String mode = askMode(sc);
         int numParticles = askInt(sc, "Number of particles", Config.NUM_PARTICLES);
         int cycles = askInt(sc, "Cycles", Config.CYCLES);
         boolean graphics = askBoolean(sc, "Graphics (true/false)", Config.GRAPHICS);
 
-        // Apply chosen settings
+        //apply chosen settings
+        Config.MODE = mode;
         Config.NUM_PARTICLES = numParticles;
         Config.CYCLES = cycles;
         Config.GRAPHICS = graphics;
 
         System.out.println();
         System.out.println("Starting simulation with:");
+        System.out.println("  Mode      = " + Config.MODE);
         System.out.println("  Particles = " + Config.NUM_PARTICLES);
         System.out.println("  Cycles    = " + Config.CYCLES);
+        if (mode.equals("parallel")) {
+            System.out.println("  Threads   = " + Config.NUM_THREADS);
+        }
         System.out.println("  Graphics  = " + Config.GRAPHICS + " @ " + Config.FPS + " FPS");
         System.out.println();
 
-        Simulation sim = new Simulation();
+        Simulation sim;
+        switch (mode) {
+            case "parallel":
+                sim = new Simulation();
+                break;
+            case "sequential":
+            default:
+                sim = new SequentialSimulation();
+                break;
+        }
 
         if (Config.GRAPHICS) {
             //starting graphics

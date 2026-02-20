@@ -5,6 +5,8 @@ public class Config {
     public static int CYCLES = 10000;
     public static boolean GRAPHICS = true;
     public static int FPS = 60;
+    public static String MODE = "sequential";
+    public static int NUM_THREADS = Runtime.getRuntime().availableProcessors();
 
     //physics stabilization
     public static double DT = 0.01; //time step (seconds)
