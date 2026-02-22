@@ -70,11 +70,11 @@ public class Main {
         Simulation sim;
         switch (mode) {
             case "parallel":
-                sim = new Simulation();
+                sim = new ParallelSimulation();
                 break;
             case "sequential":
             default:
-                sim = new SequentialSimulation();
+                sim = new Simulation();
                 break;
         }
 
@@ -88,7 +88,7 @@ public class Main {
             computeThread.start();
 
         } else {
-            //sequential run without graphics
+            //run without graphics
             sim.run();
         }
     }
