@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -10,10 +11,22 @@ public class ParallelSimulation extends Simulation {
     private final ExecutorService executor;
     private final int numThreads;
 
+    private final double[][] threadLocalFx;
+    private final double[][] threadLocalFy;
+    private final List<ForceTask> tasks;
+
     public ParallelSimulation() {
         super(); //Simulation constructor
         this.numThreads = Config.NUM_THREADS; //based on available CPU cores
         this.executor = Executors.newFixedThreadPool(numThreads); //using a fixed thread pool
+        int n = particles.length;
+        threadLocalFx = new double[numThreads][n];
+        threadLocalFy = new double[numThreads][n];
+        //create the task objects once, reuse them every cycle
+        tasks = new ArrayList<>();
+        for (int t = 0; t < numThreads; t++) {
+            tasks.add(new ForceTask(particles, n, t, numThreads, threadLocalFx[t], threadLocalFy[t]));
+        }
     }
     @Override
     protected void computeForces() {
@@ -23,33 +36,33 @@ public class ParallelSimulation extends Simulation {
 
         int n = particles.length;
 
-        List<Future<double[][]>> futures = new ArrayList<>();
-
-        //separating by chunks
-        int chunkSize = (n + numThreads - 1) / numThreads;
-
         for (int t = 0; t < numThreads; t++) {
-            final int startRow = t * chunkSize;
-            final int endRow = Math.min(startRow + chunkSize, n);
-
-            if (startRow >= n) break; //no more work
-
-            //submit task to thread pool
-            futures.add(executor.submit(new ForceTask(particles, n, startRow, endRow)));
+            Arrays.fill(threadLocalFx[t], 0.0);
+            Arrays.fill(threadLocalFy[t], 0.0);
         }
 
-        //collecting results from all threads and merging into global force arrays
-        for (Future<double[][]> future : futures) {
-            try {
-                double[][] localForces = future.get();
+        //submit all tasks to the thread pool
+        try {
+            //invokeAll starts all tasks and waits for all to finish
+            List<Future<Void>> futures = executor.invokeAll(tasks);
+
+            //merge results from each thread into the global force arrays
+            for (int t = 0; t < numThreads; t++) {
                 for (int i = 0; i < n; i++) {
-                    fx[i] += localForces[0][i];
-                    fy[i] += localForces[1][i];
+                    fx[i] += threadLocalFx[t][i];
+                    fy[i] += threadLocalFy[t][i];
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
+
+        /*double tfx = 0, tfy = 0;
+        for (int i = 0; i < particles.length; i++) {
+            tfx += fx[i];
+            tfy += fy[i];
+        }
+        System.out.printf("After computeForces: fx=%.10f fy=%.10f%n", tfx, tfy);*/
     }
     @Override
     public void run() {
@@ -82,27 +95,29 @@ public class ParallelSimulation extends Simulation {
    It keeps Newton's third law optimization (j = i+1) for efficiency.
    Returns localFx and localFy arrays to be merged by the main thread.
  */
-        private static class ForceTask implements Callable<double[][]> {
+        private static class ForceTask implements Callable<Void> {
             private final Particles[] particles;
             private final int n;
-            private final int startRow;
-            private final int endRow;
+            private final int threadId;
+            private final int numThreads;
+            private final double[] localFx;
+            private final double[] localFy;
 
-            ForceTask(Particles[] particles, int n, int startRow, int endRow) {
+
+            ForceTask(Particles[] particles, int n, int threadId, int numThreads, double[] localFx, double[] localFy) {
                 this.particles = particles;
                 this.n = n;
-                this.startRow = startRow;
-                this.endRow = endRow;
+                this.threadId = threadId;
+                this.numThreads = numThreads;
+                this.localFx = localFx;
+                this.localFy = localFy;
             }
 
             @Override
-            public double[][] call() {
-                //thread-local force arrays
-                double[] localFx = new double[n];
-                double[] localFy = new double[n];
+            public Void call() {
 
                 //compute forces only for this thread's assigned rows
-                for (int i = startRow; i < endRow; i++) {
+                for (int i = threadId; i < n; i+= numThreads) {
                     for (int j = i + 1; j < n; j++) {
 
                         //how far apart particles are
@@ -127,7 +142,7 @@ public class ParallelSimulation extends Simulation {
                         localFy[j] -= forceY;
                     }
                 }
-                return new double[][]{localFx, localFy};
+                return null;
             }
         }
     }
